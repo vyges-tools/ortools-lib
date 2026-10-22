@@ -1,0 +1,9 @@
+[package]
+name = "vyges-ortools-lib"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Pinned OR-Tools linear solver (SCIP backend) built with Bazel into one static archive, behind a small C shim and a safe Rust API."
+repository = "https://github.com/vyges-tools/ortools-lib"
+links = "vyges_ortools"
+build = "build.rs"

@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Vyges
+#
+# Builds OR-Tools' linear solver with the SCIP backend into ONE static archive, plus the C shim in
+# `shim/`, for the Rust crate in this repository to link.
+#
+# ⛔ The versions below are deliberate, not "latest". When two optima of an integer program tie, the
+# one returned is decided by the solver's internals, so a different OR-Tools or SCIP release can
+# return a different (equally optimal) answer. Pin, and bump on purpose — see `ortools-pin.yaml`.
+
+module(
+    name = "vyges_ortools",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "or-tools", version = "9.15")
+bazel_dep(name = "rules_cc", version = "0.2.22")
+
+# SCIP 9.2.3 uses bare C11 <threads.h> names in its bundled tinycthread, which collide with
+# pthread's in modern glibc. SCIP's own fix (scipopt/scip@cc917e07, Apache-2.0: TNY_ prefix) renames
+# symbols only — no solver behaviour changes. Drop once a fixed SCIP release is in the registry.
+bazel_dep(name = "scip", version = "9.2.3.bcr.1")
+single_version_override(
+    module_name = "scip",
+    patch_strip = 1,
+    patches = ["//patches:scip-cc917e07-tny-prefix.patch"],
+    version = "9.2.3.bcr.1",
+)
+
+# ⛔ THE TRANSITIVE SET IS PINNED TOO. Bazel's version resolution (MVS) takes, for each module, the
+# highest version anything in the graph asks for — so `or-tools 9.15` alone resolves abseil,
+# protobuf's helpers, zlib, bzip2, re2 ... at whatever its own requirements say, which is not the
+# set this crate is validated against. Each line below raises one module to that set; none is
+# called directly. Keep this block in step with `ortools-pin.yaml`.
+bazel_dep(name = "abseil-cpp", version = "20260107.1")
+bazel_dep(name = "boringssl", version = "0.20251002.0")
+bazel_dep(name = "bzip2", version = "1.0.8.bcr.3")
+bazel_dep(name = "curl", version = "8.11.0.bcr.4")
+bazel_dep(name = "fmt", version = "12.1.0")
+bazel_dep(name = "glpk", version = "5.0.bcr.5")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
+bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1")
+bazel_dep(name = "openssl", version = "3.5.4.bcr.0")
+bazel_dep(name = "package_metadata", version = "0.0.7")
+bazel_dep(name = "pcre2", version = "10.46-DEV")
+bazel_dep(name = "pybind11_bazel", version = "3.0.1")
+bazel_dep(name = "re2", version = "2025-11-05.bcr.1")
+bazel_dep(name = "rules_perl", version = "0.5.0")
+bazel_dep(name = "rules_pkg", version = "1.2.0")
+bazel_dep(name = "rules_python", version = "2.3.2")
+bazel_dep(name = "swig", version = "4.3.0.bcr.2")
+bazel_dep(name = "zlib", version = "1.3.1.bcr.8")
+
+# Hermetic LLVM: statically linked LLVM binaries and a zero-sysroot cc_toolchain, so the compiler
+# is part of the pin and not whatever the host has. The compiler matters here: it decides the
+# floating-point code the solver runs (see .bazelrc for the flags).
+bazel_dep(name = "llvm", version = "0.8.18", dev_dependency = True)
+
+register_toolchains(
+    "@llvm//toolchain:all",
+    dev_dependency = True,
+)

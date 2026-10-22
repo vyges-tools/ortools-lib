@@ -1,0 +1,38 @@
+# vyges-ortools-lib — the solver build this crate links. MODULE.bazel is what Bazel reads; this file
+# is the record of WHAT was pinned and WHY, for the provenance manifest and for a deliberate bump.
+#
+# ⛔ Bump deliberately (manual), never to "latest". An integer program whose optima tie returns the
+# one the solver's internals pick, so a different OR-Tools/SCIP release — or a different compiler or
+# floating-point flag — can return a different, equally optimal answer.
+solver:
+  or-tools: "9.15"              # Bazel Central Registry module or-tools 9.15
+  scip:     "9.2.3.bcr.1"       # + scipopt/scip@cc917e07 (symbol prefix only; patches/)
+  highs:    "1.11.0"            # resolved transitively; not called by this crate
+# Transitive modules raised to the validated set (MODULE.bazel's second block; MVS would otherwise
+# take whatever or-tools' own requirements say):
+transitive:
+  abseil-cpp: "20260107.1"
+  boringssl: "0.20251002.0"
+  bzip2: "1.0.8.bcr.3"
+  curl: "8.11.0.bcr.4"
+  fmt: "12.1.0"
+  glpk: "5.0.bcr.5"
+  googletest: "1.17.0.bcr.2"
+  nlohmann_json: "3.12.0.bcr.1"
+  openssl: "3.5.4.bcr.0"
+  package_metadata: "0.0.7"
+  pcre2: "10.46-DEV"
+  pybind11_bazel: "3.0.1"
+  re2: "2025-11-05.bcr.1"
+  rules_perl: "0.5.0"
+  rules_pkg: "1.2.0"
+  rules_python: "2.3.2"
+  swig: "4.3.0.bcr.2"
+  zlib: "1.3.1.bcr.8"
+toolchain:
+  bazel: "9.1.1"                # .bazelversion
+  llvm:  "0.8.18"               # hermetic LLVM Bazel module: the compiler is part of the pin
+  flags: ["-c opt", "-O3", "-ffp-contract=off"]
+license:
+  or-tools: Apache-2.0
+  scip:     Apache-2.0

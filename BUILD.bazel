@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Vyges
+
+load("@rules_cc//cc:cc_static_library.bzl", "cc_static_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "shim",
+    srcs = ["shim/vyges_mp.cc"],
+    hdrs = ["shim/vyges_mp.h"],
+    deps = [
+        "@or-tools//ortools/linear_solver",
+        "@or-tools//ortools/linear_solver:linear_solver_base",
+    ],
+)
+
+# ONE archive with the shim and every object it needs (OR-Tools, SCIP, abseil, protobuf, ...), so
+# the Rust build links a single `libvyges_ortools.a` and nothing from the host.
+cc_static_library(
+    name = "vyges_ortools",
+    deps = [":shim"],
+)
