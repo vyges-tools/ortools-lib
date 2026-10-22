@@ -48,11 +48,22 @@ nm "$solver" 2>/dev/null | awk '$2 == "T" && $3 ~ /^vyges_mp_/ {print $3}' | sor
 
 ld -r -o "$work/whole.o" --whole-archive "$solver" --no-whole-archive \
    --start-group "$cxx" "$cxxabi" "$unwind" "$builtins" --end-group
-objcopy --keep-global-symbols="$work/keep.txt" "$work/whole.o" "$work/vyges_ortools.o"
+objcopy --keep-global-symbols="$work/keep.txt" "$work/whole.o" "$work/local.o"
+# ⛔ **Local symbols are not enough: COMDAT GROUPS are merged by their SIGNATURE NAME**, which
+# localising a symbol does not change. An inline or template instance the program also has (a
+# boost exception vtable, built against the other C++ runtime) shared one group signature with the
+# program's copy; the linker kept the first group it saw and DISCARDED the other — leaving the
+# program's references to a symbol in a dropped section (lld: "relocation R_X86_64_PC32 cannot be
+# used against symbol 'vtable for boost::exception'"), or, linked the other way round, binding the
+# program to this runtime's copy. Dropping the group sections makes every member an ordinary
+# section of this object: private, like everything else in it.
+objcopy --remove-section=.group "$work/local.o" "$work/vyges_ortools.o"
 
-# Nothing but the C API may stay global and defined.
+# Nothing but the C API may stay global and defined, and no group may remain to merge.
 extra=$(nm -g --defined-only "$work/vyges_ortools.o" | awk '{print $3}' | grep -v '^vyges_mp_' || true)
 [ -z "$extra" ] || { echo "bundle.sh: symbols left global: $extra" >&2; exit 1; }
+groups=$(readelf -g --wide "$work/vyges_ortools.o" | grep -c 'COMDAT group' || true)
+[ "$groups" = 0 ] || { echo "bundle.sh: $groups COMDAT group(s) left" >&2; exit 1; }
 
 mkdir -p "$out/lib" "$out/include"
 rm -f "$out/lib/libvyges_ortools.a"
