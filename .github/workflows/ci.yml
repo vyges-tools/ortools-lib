@@ -12,7 +12,8 @@
 # One workflow, not a test workflow plus a bundle workflow: a separate bundle job would race the
 # tests of the very push that changed the id, which would then have nothing to fetch.
 #
-# 🔑 ONE ASSET PER TARGET in the same release: x86_64 and arm64 Linux, each built NATIVELY on its own
+# 🔑 ONE ASSET PER TARGET in the same release: x86_64 and arm64 Linux and Apple Silicon macOS, each
+# built NATIVELY on its own
 # runner with the same pinned compiler and flags. "Published" is per asset, so a release holding one
 # target's archive still builds the other.
 name: ci
@@ -35,6 +36,7 @@ jobs:
         include:
           - { target: x86_64-unknown-linux-gnu, runner: ubuntu-latest, bazelisk: bazelisk-linux-amd64 }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, bazelisk: bazelisk-linux-arm64 }
+          - { target: aarch64-apple-darwin,      runner: macos-15,         bazelisk: bazelisk-darwin-arm64 }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     env:
@@ -114,7 +116,7 @@ jobs:
            "built_by": "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"}
           JSON
           tar -C "$RUNNER_TEMP" -czf "$GITHUB_WORKSPACE/$name.tar.gz" "$name"
-          ( cd "$GITHUB_WORKSPACE" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256" )
+          ( cd "$GITHUB_WORKSPACE" && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256" )
           echo "asset=$name.tar.gz" >> "$GITHUB_OUTPUT"
           ls "$stage/licenses" | wc -l | xargs echo "third-party licence dirs:"
 
@@ -142,7 +144,7 @@ jobs:
             else
               gh release create "bundle-$id" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
                 --title "solver bundle $id" \
-                --notes "Prebuilt libvyges_ortools.a for bundle id $id (Linux x86_64 and arm64, one asset per target), built from $GITHUB_SHA. Fetch with scripts/fetch-bundle.sh." \
+                --notes "Prebuilt libvyges_ortools.a for bundle id $id (Linux x86_64 and arm64, macOS arm64; one asset per target), built from $GITHUB_SHA. Fetch with scripts/fetch-bundle.sh." \
                 "${assets[@]}" && exit 0
             fi
             sleep 20

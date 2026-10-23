@@ -5,7 +5,7 @@
 #   VYGES_ORTOOLS_PREBUILT_DIR=<dir>
 #
 # Published by .github/workflows/ci.yml as release `bundle-<id>`, one asset per target: Linux
-# x86_64 and arm64. Exit 1 when no bundle exists for this id yet: its inputs changed and the workflow has not
+# x86_64 and arm64, macOS arm64. Exit 1 when no bundle exists for this id yet: its inputs changed and the workflow has not
 # published the new one. Nothing falls back to an older bundle.
 #
 # Usage: scripts/fetch-bundle.sh <dir>
@@ -16,7 +16,8 @@ id=$(bash "$here/scripts/bundle-id.sh")
 case "$(uname -s)-$(uname -m)" in
   Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
   Linux-aarch64) target=aarch64-unknown-linux-gnu ;;
-  *) echo "fetch-bundle.sh: prebuilt for Linux x86_64 and arm64 only" >&2; exit 1 ;;
+  Darwin-arm64) target=aarch64-apple-darwin ;;
+  *) echo "fetch-bundle.sh: prebuilt for Linux x86_64/arm64 and macOS arm64 only" >&2; exit 1 ;;
 esac
 name="vyges-ortools-$id-$target.tar.gz"
 url="https://github.com/vyges-tools/ortools-lib/releases/download/bundle-$id"

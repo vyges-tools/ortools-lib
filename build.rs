@@ -31,9 +31,16 @@ fn main() {
     }
     println!("cargo:rustc-link-search=native={}", lib.display());
     println!("cargo:rustc-link-lib=static=vyges_ortools");
-    // The C++ runtime is inside the bundle; only the C library's pieces come from the final link.
-    for l in ["pthread", "m", "dl"] {
-        println!("cargo:rustc-link-lib={l}");
+    // Linux: the C++ runtime is inside the bundle; only the C library's pieces come from the final
+    // link. macOS: the toolchain builds against the SDK's libc++ and has no static runtime to embed,
+    // so the system `libc++` is linked, and CoreFoundation for abseil's time zone lookup.
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rustc-link-lib=c++");
+        println!("cargo:rustc-link-lib=framework=CoreFoundation");
+    } else {
+        for l in ["pthread", "m", "dl"] {
+            println!("cargo:rustc-link-lib={l}");
+        }
     }
 }
 

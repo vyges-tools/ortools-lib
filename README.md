@@ -47,7 +47,7 @@ assert_eq!(s.solve(), ResultStatus::Optimal);
 - **Prebuilt:** `scripts/fetch-bundle.sh <dir>` downloads the bundle built from this checkout's
   build inputs (release `bundle-<id>`, id from `scripts/bundle-id.sh`) and checks its SHA-256;
   then set `VYGES_ORTOOLS_PREBUILT_DIR=<dir>`. No Bazel, no compile. The `ci` workflow publishes
-  each id once per target (Linux x86_64 and arm64, each built natively), the first time a push to
+  each id once per target (Linux x86_64 and arm64, macOS arm64; each built natively), the first time a push to
   `main` changes a build input; the tarball carries the third-party licence files of everything
   compiled into it.
 - **From source (default):** `build.rs` runs `bazelisk build //:vyges_ortools` here
@@ -59,7 +59,9 @@ The archive is ONE relocatable object (`scripts/bundle.sh`): the solver prelinke
 toolchain's own libc++, libc++abi and libunwind, every symbol made local except the `vyges_mp_*`
 C API. The C++ library is part of the pin, and keeping it private means a program that already
 links another C++ runtime is unaffected; no C++ type or exception crosses the C boundary. The final
-link needs only `pthread`, `m` and `dl`. Linux (x86_64, arm64) for now.
+link needs only `pthread`, `m` and `dl`. On macOS (Apple Silicon) the toolchain builds against the
+SDK's libc++ and has no static runtime to embed, so the bundle is the solver alone, its symbols just
+as private, and the final link adds the system `libc++` and CoreFoundation.
 
 ## Licences
 

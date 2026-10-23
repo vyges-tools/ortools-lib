@@ -20,14 +20,48 @@
 # same pinned compiler and flags, targeting `@llvm//platforms:linux_aarch64`, and prelinks with the
 # `aarch64-linux-gnu-` binutils. Default: the host's own target.
 #
-# Linux only for now. Usage: [VYGES_BUNDLE_TARGET=<triple>] scripts/bundle.sh <out-dir>
+# 🔑 MACOS (Apple Silicon): the toolchain compiles against the pinned macOS SDK's libc++ and has
+# no static C++ runtime to embed, so the bundle is the solver alone, linked against the system
+# `libc++` by the final link. It is still ONE object with only the C API global: `ld -r -all_load`
+# (the `--whole-archive` of Mach-O) with `-exported_symbols_list`, which in a `-r` link turns every
+# other global — the weak inline and template definitions included, Mach-O's COMDATs — into a
+# local symbol that no other object can coalesce with.
+#
+# Usage: [VYGES_BUNDLE_TARGET=<triple>] scripts/bundle.sh <out-dir>   (Linux x86_64/arm64, macOS arm64)
 set -euo pipefail
 
 out=${1:?usage: scripts/bundle.sh <out-dir>}
 here=$(cd "$(dirname "$0")/.." && pwd)
 bazel=${VYGES_BAZEL:-$(command -v bazelisk || command -v bazel || true)}
 [ -n "$bazel" ] || { echo "bundle.sh: no bazelisk/bazel on PATH (set VYGES_BAZEL)" >&2; exit 1; }
-[ "$(uname -s)" = Linux ] || { echo "bundle.sh: Linux only for now" >&2; exit 1; }
+
+if [ "$(uname -s)" = Darwin ]; then
+  [ "$(uname -m)" = arm64 ] || { echo "bundle.sh: macOS arm64 only" >&2; exit 1; }
+  [ -z "${VYGES_BUNDLE_TARGET:-}" ] || [ "$VYGES_BUNDLE_TARGET" = aarch64-apple-darwin ] \
+    || { echo "bundle.sh: no cross build for $VYGES_BUNDLE_TARGET from macOS" >&2; exit 1; }
+  cd "$here"
+  "$bazel" build //:vyges_ortools
+  solver=$("$bazel" cquery --output=files //:vyges_ortools 2>/dev/null | grep '\.a$' | grep -v -- '-exec')
+  [ -s "$solver" ] || { echo "bundle.sh: missing or empty archive: $solver" >&2; exit 1; }
+  work=$(mktemp -d)
+  trap 'rm -rf "$work"' EXIT
+  nm "$solver" 2>/dev/null | awk '$2 == "T" && $3 ~ /^_vyges_mp_/ {print $3}' | sort -u > "$work/keep.txt"
+  [ -s "$work/keep.txt" ] || { echo "bundle.sh: no vyges_mp_* symbols in $solver" >&2; exit 1; }
+  # The deployment target is .bazelrc's `--macos_minimum_os`.
+  ld -r -arch arm64 -platform_version macos 13.3 13.3 -o "$work/vyges_ortools.o" \
+     -all_load "$solver" -exported_symbols_list "$work/keep.txt"
+  extra=$(nm -g --defined-only "$work/vyges_ortools.o" | awk '{print $3}' | grep -v '^_vyges_mp_' || true)
+  [ -z "$extra" ] || { echo "bundle.sh: symbols left global: $extra" >&2; exit 1; }
+  [ "$(lipo -archs "$work/vyges_ortools.o")" = arm64 ] || { echo "bundle.sh: not an arm64 object" >&2; exit 1; }
+  mkdir -p "$out/lib" "$out/include"
+  rm -f "$out/lib/libvyges_ortools.a"
+  ZERO_AR_DATE=1 libtool -static -o "$out/lib/libvyges_ortools.a" "$work/vyges_ortools.o"   # no timestamp: reproducible
+  cp shim/vyges_mp.h "$out/include/"
+  cp ortools-pin.yaml LICENSE NOTICE "$out/"
+  echo "bundle.sh: $out/lib/libvyges_ortools.a for aarch64-apple-darwin ($(wc -l < "$work/keep.txt" | tr -d ' ') C entry points)"
+  exit 0
+fi
+[ "$(uname -s)" = Linux ] || { echo "bundle.sh: Linux and macOS only" >&2; exit 1; }
 
 host=$(uname -m)-unknown-linux-gnu
 target=${VYGES_BUNDLE_TARGET:-$host}
