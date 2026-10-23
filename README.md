@@ -47,17 +47,19 @@ assert_eq!(s.solve(), ResultStatus::Optimal);
 - **Prebuilt:** `scripts/fetch-bundle.sh <dir>` downloads the bundle built from this checkout's
   build inputs (release `bundle-<id>`, id from `scripts/bundle-id.sh`) and checks its SHA-256;
   then set `VYGES_ORTOOLS_PREBUILT_DIR=<dir>`. No Bazel, no compile. The `ci` workflow publishes
-  each id once, the first time a push to `main` changes a build input; the tarball carries the
-  third-party licence files of everything compiled into it.
+  each id once per target (Linux x86_64 and arm64, each built natively), the first time a push to
+  `main` changes a build input; the tarball carries the third-party licence files of everything
+  compiled into it.
 - **From source (default):** `build.rs` runs `bazelisk build //:vyges_ortools` here
   (`VYGES_BAZEL` names another launcher). The first build compiles OR-Tools, SCIP, HiGHS, abseil
-  and protobuf from source; Bazel caches them after that.
+  and protobuf from source; Bazel caches them after that. `VYGES_BUNDLE_TARGET=aarch64-unknown-linux-gnu`
+  cross-builds the arm64 archive on an x86_64 host with the same compiler and flags.
 
 The archive is ONE relocatable object (`scripts/bundle.sh`): the solver prelinked with the
 toolchain's own libc++, libc++abi and libunwind, every symbol made local except the `vyges_mp_*`
 C API. The C++ library is part of the pin, and keeping it private means a program that already
 links another C++ runtime is unaffected; no C++ type or exception crosses the C boundary. The final
-link needs only `pthread`, `m` and `dl`. Linux for now.
+link needs only `pthread`, `m` and `dl`. Linux (x86_64, arm64) for now.
 
 ## Licences
 

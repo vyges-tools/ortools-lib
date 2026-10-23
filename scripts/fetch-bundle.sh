@@ -4,8 +4,8 @@
 # checks its SHA-256, and prints the line to export:
 #   VYGES_ORTOOLS_PREBUILT_DIR=<dir>
 #
-# Published by .github/workflows/ci.yml as release `bundle-<id>`. Linux x86_64 only for
-# now. Exit 1 when no bundle exists for this id yet: its inputs changed and the workflow has not
+# Published by .github/workflows/ci.yml as release `bundle-<id>`, one asset per target: Linux
+# x86_64 and arm64. Exit 1 when no bundle exists for this id yet: its inputs changed and the workflow has not
 # published the new one. Nothing falls back to an older bundle.
 #
 # Usage: scripts/fetch-bundle.sh <dir>
@@ -13,8 +13,11 @@ set -euo pipefail
 dir=${1:?usage: scripts/fetch-bundle.sh <dir>}
 here=$(cd "$(dirname "$0")/.." && pwd)
 id=$(bash "$here/scripts/bundle-id.sh")
-target=x86_64-unknown-linux-gnu
-[ "$(uname -s)-$(uname -m)" = Linux-x86_64 ] || { echo "fetch-bundle.sh: prebuilt for $target only" >&2; exit 1; }
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
+  Linux-aarch64) target=aarch64-unknown-linux-gnu ;;
+  *) echo "fetch-bundle.sh: prebuilt for Linux x86_64 and arm64 only" >&2; exit 1 ;;
+esac
 name="vyges-ortools-$id-$target.tar.gz"
 url="https://github.com/vyges-tools/ortools-lib/releases/download/bundle-$id"
 work=$(mktemp -d)

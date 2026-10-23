@@ -12,7 +12,9 @@
 # One workflow, not a test workflow plus a bundle workflow: a separate bundle job would race the
 # tests of the very push that changed the id, which would then have nothing to fetch.
 #
-# Linux x86_64 only, as bundle.sh is.
+# 🔑 ONE ASSET PER TARGET in the same release: x86_64 and arm64 Linux, each built NATIVELY on its own
+# runner with the same pinned compiler and flags. "Published" is per asset, so a release holding one
+# target's archive still builds the other.
 name: ci
 
 on:
@@ -26,11 +28,17 @@ permissions:
 
 jobs:
   bundle-and-test:
-    name: bundle & test (x86_64-linux)
-    runs-on: ubuntu-latest
+    name: bundle & test (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-latest, bazelisk: bazelisk-linux-amd64 }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, bazelisk: bazelisk-linux-arm64 }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     env:
-      TARGET: x86_64-unknown-linux-gnu
+      TARGET: ${{ matrix.target }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
@@ -40,12 +48,13 @@ jobs:
         run: |
           id=$(bash scripts/bundle-id.sh)
           echo "id=$id" >> "$GITHUB_OUTPUT"
-          if gh release view "bundle-$id" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if gh release view "bundle-$id" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null \
+               | grep -qx "vyges-ortools-$id-$TARGET.tar.gz"; then
             echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "bundle-$id is published — fetching it"
+            echo "bundle-$id has $TARGET — fetching it"
           else
             echo "published=false" >> "$GITHUB_OUTPUT"
-            echo "bundle-$id is not published — building it from source"
+            echo "bundle-$id has no $TARGET — building it from source"
           fi
 
       - name: Fetch the published bundle
@@ -65,7 +74,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/bin"
           curl -fsSL -o "$RUNNER_TEMP/bin/bazelisk" \
-            https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-amd64
+            https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/${{ matrix.bazelisk }}
           chmod +x "$RUNNER_TEMP/bin/bazelisk"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
@@ -120,14 +129,25 @@ jobs:
           retention-days: 30
 
       # Only from main: a pull request's bundle is built and tested, never published.
+      # ⚠️ Both targets publish into ONE release, so either job may find it missing or already made
+      # by the other: create it if absent (a create that loses the race is retried as an upload).
       - name: Publish release bundle-<id>
         if: steps.id.outputs.published != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           id=${{ steps.id.outputs.id }}
-          gh release create "bundle-$id" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "solver bundle $id" \
-            --notes "Prebuilt libvyges_ortools.a for bundle id $id (x86_64 Linux), built from $GITHUB_SHA. Fetch with scripts/fetch-bundle.sh." \
-            "${{ steps.pkg.outputs.asset }}" "${{ steps.pkg.outputs.asset }}.sha256"
+          assets=("${{ steps.pkg.outputs.asset }}" "${{ steps.pkg.outputs.asset }}.sha256")
+          for try in 1 2 3; do
+            if gh release view "bundle-$id" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release upload "bundle-$id" --repo "$GITHUB_REPOSITORY" "${assets[@]}" && exit 0
+            else
+              gh release create "bundle-$id" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+                --title "solver bundle $id" \
+                --notes "Prebuilt libvyges_ortools.a for bundle id $id (Linux x86_64 and arm64, one asset per target), built from $GITHUB_SHA. Fetch with scripts/fetch-bundle.sh." \
+                "${assets[@]}" && exit 0
+            fi
+            sleep 20
+          done
+          exit 1
 
   lint:
     name: fmt-free lint
