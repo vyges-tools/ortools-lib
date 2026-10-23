@@ -44,8 +44,11 @@ assert_eq!(s.solve(), ResultStatus::Optimal);
 
 ## Two ways to get the archive
 
-- **Prebuilt:** set `VYGES_ORTOOLS_PREBUILT_DIR=<dir>` holding `lib/libvyges_ortools.a` (the
-  per-arch bundle the `build-bundle` workflow publishes). No Bazel, no compile.
+- **Prebuilt:** `scripts/fetch-bundle.sh <dir>` downloads the bundle built from this checkout's
+  build inputs (release `bundle-<id>`, id from `scripts/bundle-id.sh`) and checks its SHA-256;
+  then set `VYGES_ORTOOLS_PREBUILT_DIR=<dir>`. No Bazel, no compile. The `ci` workflow publishes
+  each id once, the first time a push to `main` changes a build input; the tarball carries the
+  third-party licence files of everything compiled into it.
 - **From source (default):** `build.rs` runs `bazelisk build //:vyges_ortools` here
   (`VYGES_BAZEL` names another launcher). The first build compiles OR-Tools, SCIP, HiGHS, abseil
   and protobuf from source; Bazel caches them after that.

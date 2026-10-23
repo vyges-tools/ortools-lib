@@ -4,7 +4,7 @@
 //!
 //! Two ways to get it, as for the sibling `-lib` crates:
 //! - **Prebuilt:** `VYGES_ORTOOLS_PREBUILT_DIR=<dir>` holding `lib/libvyges_ortools.a` (the bundle
-//!   the `build-bundle` workflow publishes). No Bazel, no compile.
+//!   `scripts/fetch-bundle.sh` downloads). No Bazel, no compile.
 //! - **From source (default):** `scripts/bundle.sh` into `OUT_DIR` — Bazel with the versions pinned
 //!   in `MODULE.bazel`. `VYGES_BAZEL` names the launcher if it is not `bazelisk`/`bazel` on PATH.
 //!

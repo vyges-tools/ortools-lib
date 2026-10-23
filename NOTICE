@@ -12,4 +12,5 @@ Central Registry and compiles them into libvyges_ortools.a, which therefore also
              patches/scip-cc917e07-tny-prefix.patch is SCIP's own commit cc917e07, unchanged.
   and the libraries they depend on (abseil, protobuf, re2, HiGHS, SoPlex, zlib, bzip2, ...),
   each under its own licence as shipped in the fetched sources.
-Distributions of the archive reproduce those notices; the build-bundle workflow collects them.
+Distributions of the archive reproduce those notices; the ci workflow collects them into
+the published bundle (licenses/).

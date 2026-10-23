@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: Apache-2.0
+# Build & test on every push to main and on pull requests (plus manual dispatch) — and publish the
+# prebuilt bundle the first time a push to main brings a bundle id with none published.
+#
+# 🔑 **The bundle is built once per BUNDLE ID, not once per run.** `scripts/bundle-id.sh` hashes
+# every file the Bazel build reads; a release `bundle-<id>` holds the archive built from exactly
+# those inputs. A run whose id is already published fetches it (seconds) and tests the crate
+# against it. Only a run that changed a build input compiles OR-Tools, SCIP and their
+# dependencies from source (most of an hour), and on main it then publishes that id, so every
+# later run — here and in the crates that link this one — fetches it instead.
+#
+# One workflow, not a test workflow plus a bundle workflow: a separate bundle job would race the
+# tests of the very push that changed the id, which would then have nothing to fetch.
+#
+# Linux x86_64 only, as bundle.sh is.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # publish release `bundle-<id>` (push to main only)
+
+jobs:
+  bundle-and-test:
+    name: bundle & test (x86_64-linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Bundle id
+        id: id
+        run: |
+          id=$(bash scripts/bundle-id.sh)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          if gh release view "bundle-$id" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "bundle-$id is published — fetching it"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "bundle-$id is not published — building it from source"
+          fi
+
+      - name: Fetch the published bundle
+        if: steps.id.outputs.published == 'true'
+        run: bash scripts/fetch-bundle.sh "$RUNNER_TEMP/bundle"
+
+      # The source build needs room: the runner image's preinstalled SDKs leave too little disk for
+      # the Bazel output base of OR-Tools + SCIP + abseil + protobuf + the hermetic LLVM.
+      - name: Free disk space
+        if: steps.id.outputs.published != 'true'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Bazelisk (pinned)
+        if: steps.id.outputs.published != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL -o "$RUNNER_TEMP/bin/bazelisk" \
+            https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-amd64
+          chmod +x "$RUNNER_TEMP/bin/bazelisk"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Build the bundle from source (Bazel, pinned)
+        if: steps.id.outputs.published != 'true'
+        run: bash scripts/bundle.sh "$RUNNER_TEMP/bundle"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Against the bundle just fetched or built — the archive a consumer links, not a second build.
+      - name: Test
+        run: VYGES_ORTOOLS_PREBUILT_DIR="$RUNNER_TEMP/bundle" cargo test --verbose
+
+      # The third-party notices of everything compiled into the archive, as the fetched sources
+      # ship them (NOTICE promises the bundle carries them).
+      - name: Package
+        if: steps.id.outputs.published != 'true'
+        id: pkg
+        run: |
+          set -eu
+          id=${{ steps.id.outputs.id }}
+          name="vyges-ortools-$id-$TARGET"
+          stage="$RUNNER_TEMP/$name"
+          mkdir -p "$stage/licenses"
+          cp -r "$RUNNER_TEMP/bundle/." "$stage/"
+          ob=$(bazelisk info output_base)
+          for d in "$ob"/external/*/; do
+            repo=$(basename "$d")
+            for f in "$d"LICENSE* "$d"LICENCE* "$d"COPYING* "$d"NOTICE*; do
+              [ -f "$f" ] || continue
+              mkdir -p "$stage/licenses/$repo"
+              cp "$f" "$stage/licenses/$repo/"
+            done
+          done
+          cat > "$stage/manifest.json" <<JSON
+          {"bundle_id": "$id", "target": "$TARGET", "commit": "$GITHUB_SHA",
+           "built_by": "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"}
+          JSON
+          tar -C "$RUNNER_TEMP" -czf "$GITHUB_WORKSPACE/$name.tar.gz" "$name"
+          ( cd "$GITHUB_WORKSPACE" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256" )
+          echo "asset=$name.tar.gz" >> "$GITHUB_OUTPUT"
+          ls "$stage/licenses" | wc -l | xargs echo "third-party licence dirs:"
+
+      - name: Upload build artifact
+        if: steps.id.outputs.published != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.pkg.outputs.asset }}
+          path: |
+            ${{ steps.pkg.outputs.asset }}
+            ${{ steps.pkg.outputs.asset }}.sha256
+          retention-days: 30
+
+      # Only from main: a pull request's bundle is built and tested, never published.
+      - name: Publish release bundle-<id>
+        if: steps.id.outputs.published != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          id=${{ steps.id.outputs.id }}
+          gh release create "bundle-$id" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "solver bundle $id" \
+            --notes "Prebuilt libvyges_ortools.a for bundle id $id (x86_64 Linux), built from $GITHUB_SHA. Fetch with scripts/fetch-bundle.sh." \
+            "${{ steps.pkg.outputs.asset }}" "${{ steps.pkg.outputs.asset }}.sha256"
+
+  lint:
+    name: fmt-free lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # ⛔ NO `cargo fmt --check`: these crates are hand-formatted.
+      - name: No machine-specific paths in tracked files
+        run: |
+          if git grep -nE '/home/[a-z]+/|/Users/[a-z]+/' -- . ; then
+            echo "::error::a tracked file contains an absolute developer path"
+            exit 1
+          fi
+          echo "no machine-specific paths"
