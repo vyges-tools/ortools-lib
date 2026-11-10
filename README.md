@@ -1,5 +1,7 @@
 # vyges-ortools-lib
 
+**[Download Loom](https://vyges.com/products/vyges-cli/#install)** · install the free [Vyges CLI](https://vyges.com/products/vyges-cli/), then `vyges install loom`
+
 OR-Tools' linear solver with the **SCIP** backend, built with **Bazel** at pinned versions into one
 static archive (`libvyges_ortools.a`), behind a small C shim and a safe Rust API.
 
