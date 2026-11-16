@@ -47,8 +47,8 @@ if [ "$(uname -s)" = Darwin ]; then
   trap 'rm -rf "$work"' EXIT
   nm "$solver" 2>/dev/null | awk '$2 == "T" && $3 ~ /^_vyges_mp_/ {print $3}' | sort -u > "$work/keep.txt"
   [ -s "$work/keep.txt" ] || { echo "bundle.sh: no vyges_mp_* symbols in $solver" >&2; exit 1; }
-  # The deployment target is .bazelrc's `--macos_minimum_os`.
-  ld -r -arch arm64 -platform_version macos 13.3 13.3 -o "$work/vyges_ortools.o" \
+  # The deployment target is build-config/common.bazelrc's `--macos_minimum_os`.
+  ld -r -arch arm64 -platform_version macos 15.0 15.0 -o "$work/vyges_ortools.o" \
      -all_load "$solver" -exported_symbols_list "$work/keep.txt"
   extra=$(nm -g --defined-only "$work/vyges_ortools.o" | awk '{print $3}' | grep -v '^_vyges_mp_' || true)
   [ -z "$extra" ] || { echo "bundle.sh: symbols left global: $extra" >&2; exit 1; }

@@ -15,7 +15,8 @@ So this crate pins all of them:
 
 - **OR-Tools 9.15** and **SCIP 9.2.3** from the Bazel Central Registry (`MODULE.bazel`);
 - the **hermetic LLVM** toolchain (Bazel module `llvm`), so the compiler is not the host's;
-- `-c opt -O3 -ffp-contract=off` (`.bazelrc`): no fused multiply-add, so each floating-point
+- `-c opt -O3 -ffp-contract=off`, macOS minimum 15.0 (`build-config/common.bazelrc`, the shared
+  vyges-tools/build-config settings, imported by `.bazelrc`): no fused multiply-add, so each floating-point
   operation rounds as IEEE 754 says, however the optimiser inlines.
 
 `ortools-pin.yaml` records the set. Bump on purpose, never to "latest".
